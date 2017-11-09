@@ -18,6 +18,7 @@ QList<BitcoinUnits::Unit> BitcoinUnits::availableUnits()
     unitlist.append(VRC);
     unitlist.append(mVRC);
     unitlist.append(uVRC);
+    unitlist.append(USD);
     return unitlist;
 }
 
@@ -28,6 +29,7 @@ bool BitcoinUnits::valid(int unit)
     case VRC:
     case mVRC:
     case uVRC:
+    case USD:
         return true;
     default:
         return false;
@@ -41,6 +43,7 @@ QString BitcoinUnits::name(int unit)
     case VRC: return QString("VRC");
     case mVRC: return QString("mVRC");
     case uVRC: return QString::fromUtf8("μVRC");
+    case USD:  return QString("USD");
     default: return QString("???");
     }
 }
@@ -52,6 +55,7 @@ QString BitcoinUnits::description(int unit)
     case VRC: return QString("VeriCoins");
     case mVRC: return QString("Milli-VeriCoins (1 / 1,000)");
     case uVRC: return QString("Micro-VeriCoins (1 / 1,000,000)");
+    case USD: return QString("US Dollar");
     default: return QString("???");
     }
 }
@@ -60,7 +64,9 @@ qint64 BitcoinUnits::factor(int unit)
 {
     switch(unit)
     {
-    case VRC:  return 100000000;
+    case VRC:
+    case USD:  
+        return 100000000;
     case mVRC: return 100000;
     case uVRC: return 100;
     default:   return 100000000;
@@ -71,7 +77,9 @@ int BitcoinUnits::amountDigits(int unit)
 {
     switch(unit)
     {
-    case VRC: return 8; // 21,000,000 (# digits, without commas)
+    case VRC:
+    case USD: 
+        return 8; // 21,000,000 (# digits, without commas)
     case mVRC: return 11; // 21,000,000,000
     case uVRC: return 14; // 21,000,000,000,000
     default: return 0;
@@ -84,13 +92,19 @@ int BitcoinUnits::maxdecimals(int unit)
     {
         case VRC: return 8;
         case mVRC: return 5;
-        case uVRC: return 2;
+        case uVRC:
+        case USD: 
+            return 2;
         default: return 0;
     }
 }
 
 int BitcoinUnits::decimals(int unit)
 {
+    // USD should only be two
+    if(unit == USD)
+        return maxdecimals(unit);
+
     if(walletModel && walletModel->getOptionsModel())
     {
         if (walletModel->getOptionsModel()->getDecimalPoints() > maxdecimals(unit))
@@ -119,12 +133,17 @@ QString BitcoinUnits::formatMaxDecimals(int unit, qint64 n, int decimals, bool f
     qint64 n_abs = (n > 0 ? n : -n);
     qint64 quotient = n_abs / coin;
     qint64 remainder = n_abs % coin;
+
+    // force USD to two decimals to save room
+    if(unit == USD)
+        decimals = 2;
+
     QString quotient_str = QString::number(quotient);
     if (fPretty)
         quotient_str = QString("%L1").arg(quotient);
     QString remainder_str = QString::number(remainder).rightJustified(maxdecimals(unit), '0').left(decimals);
-
-    // Pad zeros after remainder up to number of decimals
+        
+        // Pad zeros after remainder up to number of decimals
     for (int i = remainder_str.size(); i < decimals; ++i)
         remainder_str.append("0");
 
@@ -139,10 +158,18 @@ QString BitcoinUnits::formatMaxDecimals(int unit, qint64 n, int decimals, bool f
     else if (fPlus && n > 0)
         quotient_str.insert(0, '+');
 
+    QString strResult;
     if (remainder_str.size())
-        return quotient_str + QString(".") + remainder_str;
+        strResult = quotient_str + QString(".") + remainder_str;
     else
-        return quotient_str;
+        strResult = quotient_str;
+
+    // append USD to the vericoin amount
+    if(unit == USD)
+        return appendUSD(strResult);
+    else
+        return strResult;
+    
 }
 
 QString BitcoinUnits::formatFee(int unit, qint64 n, bool fPlus)
@@ -168,23 +195,49 @@ QString BitcoinUnits::formatFee(int unit, qint64 n, bool fPlus)
         quotient_str.insert(0, '-');
     else if (fPlus && n > 0)
         quotient_str.insert(0, '+');
-
+    
+    QString strResult;
     if (remainder_str.size())
-        return quotient_str + QString(".") + remainder_str;
+        strResult = quotient_str + QString(".") + remainder_str;
     else
-        return quotient_str;
+        strResult = quotient_str;
+
+    // append USD to the vericoin amount
+    if(unit == USD)
+        return appendUSD(strResult);
+    else
+        return strResult;
+
 }
 
 // Calling this function will return the maximum number of decimals based on the options setting.
 QString BitcoinUnits::formatWithUnit(int unit, qint64 amount, bool plussign, bool hideamounts)
 {
-    return format(unit, amount, plussign, hideamounts) + QString(" ") + name(unit);
+    // USD is represented with $ and
+    // we also want to see VRC amount for reference
+    // so switch the option from string "USD" to "VRC"
+    QString strUnitName;
+    if (unit == USD) 
+        strUnitName = name(VRC);
+    else 
+        strUnitName = name(unit);
+
+    return format(unit, amount, plussign, hideamounts) + QString(" ") + strUnitName;
 }
 
 // Calling this function with maxdecimals(unit) will return the maximum number of decimals.
 QString BitcoinUnits::formatWithUnitWithMaxDecimals(int unit, qint64 amount, int decimals, bool plussign, bool hideamounts)
 {
-    return formatMaxDecimals(unit, amount, decimals, plussign, hideamounts) + QString(" ") + name(unit);
+    // USD is represented with $ and
+    // we also want to see VRC amount for reference
+    // so switch the option from string "USD" to "VRC"
+    QString strUnitName;
+    if (unit == USD) 
+        strUnitName = name(VRC);
+    else 
+        strUnitName = name(unit);
+
+    return formatMaxDecimals(unit, amount, decimals, plussign, hideamounts) + QString(" ") + strUnitName;
 }
 
 // Calling this function will return the maximum number of decimals for a fee.
@@ -254,4 +307,52 @@ QVariant BitcoinUnits::data(const QModelIndex &index, int role) const
         }
     }
     return QVariant();
+}
+
+QString BitcoinUnits::appendUSD(QString strVrcAmount){
+  
+    
+    // strip out the non-number stuff
+    QString strOriginal = strVrcAmount;
+    strVrcAmount.remove('+');
+    strVrcAmount.remove('-');
+    strVrcAmount.remove(',');
+
+    // convert to dollar amount to calculate string
+    float dDollarAmount  = strVrcAmount.toFloat()*dUSDRate;
+    float dDollarDecimal = dDollarAmount - (int)dDollarAmount;
+
+    // if the dollar amount is large we will shorten with abbrievations
+    QString strDollarAmount = QString::number((int)dDollarAmount);
+    if (dDollarAmount >= 1000 && dDollarAmount < 1000000){
+        strDollarAmount = QString::number(dDollarAmount/1000.0f).mid(0,5);
+        strDollarAmount.append("K");
+    }
+    else if (dDollarAmount >= 1000000 && dDollarAmount < 1000000000){
+        strDollarAmount = QString::number(dDollarAmount/1000000.0f).mid(0,5);
+        strDollarAmount.append("M");
+    }
+    else if (dDollarAmount >= 1000000000){
+        strDollarAmount = QString::number(dDollarAmount/1000000000.0f).mid(0,5);
+        strDollarAmount.append("B");
+    }
+
+    // if there is less than 1000 than just take the dollar amount
+    // as is and add the standard decimal
+    QString strDollarDecimal = "";
+    if (dDollarAmount < 1000 && dDollarDecimal != 0){
+        strDollarDecimal = QString::number(dDollarDecimal);
+        strDollarDecimal.remove(0, 2);
+        strDollarDecimal = strDollarDecimal.mid(0, 2);
+        strDollarDecimal = QString(".") + strDollarDecimal;
+    }
+
+    // if USD rate was never updated indicate this with ?'s
+    // otherwise build a dollar amount string and append it to the VRC amount
+    if (dUSDRate == -1)
+        strOriginal.append(QString(" ($\?\?\?.\?\?)"));
+    else
+        strOriginal.append(QString(" ($") + strDollarAmount + strDollarDecimal + QString(")"));
+
+    return strOriginal;
 }

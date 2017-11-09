@@ -20,7 +20,8 @@ public:
     {
         VRC,
         mVRC,
-        uVRC
+        uVRC,
+        USD
     };
 
     //! @name Static API
@@ -57,6 +58,8 @@ public:
     static QString formatWithUnitFee(int unit, qint64 amount, bool plussign=false);
     //! Parse string to coin amount
     static bool parse(int unit, const QString &value, qint64 *val_out);
+    //! Format string to include USD conversion
+    static QString appendUSD(QString strAmount);
     ///@}
 
     //! @name AbstractListModel implementation
@@ -68,6 +71,7 @@ public:
     };
     int rowCount(const QModelIndex &parent) const;
     QVariant data(const QModelIndex &index, int role) const;
+    static float dUSDRate;
     ///@}
 private:
     QList<BitcoinUnits::Unit> unitlist;

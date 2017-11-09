@@ -19,11 +19,15 @@
 #include <QUrl>
 #include <QWebView>
 #include <QGraphicsView>
+#include <QWebElement> // needed to parse the stats for USD rate
 
 using namespace GUIUtil;
 
 #define DECORATION_SIZE 46
 #define NUM_ITEMS 3
+
+// Initialize to -1 indicates no data has been recieved yet
+float BitcoinUnits::dUSDRate = -1;
 
 class TxViewDelegate : public QAbstractItemDelegate
 {
@@ -153,6 +157,7 @@ OverviewPage::OverviewPage(QWidget *parent) :
     ui->stats->page()->setLinkDelegationPolicy(QWebPage::DelegateAllLinks);
     connect(ui->stats->page(), SIGNAL(linkClicked(QUrl)), this, SLOT(myOpenUrl(QUrl)));
     connect(ui->stats->page()->networkAccessManager(), SIGNAL(sslErrors(QNetworkReply*, const QList<QSslError> & )), this, SLOT(sslErrorHandler(QNetworkReply*, const QList<QSslError> & )));
+    connect(ui->stats->page()->networkAccessManager(), SIGNAL(finished(QNetworkReply*)), this, SLOT(updateUSDRate(QNetworkReply*)));
 
     CookieJar *valueJar = new CookieJar;
     ui->value->page()->networkAccessManager()->setCookieJar(valueJar);
@@ -263,7 +268,7 @@ void OverviewPage::setModel(WalletModel *model)
     QUrl valueUrl(QString(walletUrl).append("wallet/chart.php"));
     ui->stats->load(statsUrl);
     ui->value->load(valueUrl);
-
+    
     // update the display unit, to not use the default ("VRC")
     updateDisplayUnit();
 }
@@ -287,6 +292,34 @@ void OverviewPage::updateDisplayUnit()
 void OverviewPage::updateDecimalPoints()
 {
     updateDisplayUnit();
+}
+
+void OverviewPage::updateUSDRate(QNetworkReply* reply)
+{
+    // only parse if we got a good response which means there could be new data
+    if (reply && 200 == reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt()){
+
+        // parse the "mc" and "tc" tags for the needed data
+        QString strTotalSupply = ui->stats->page()->mainFrame()->findFirstElement("#values").findFirst("ts").toPlainText();
+        QString strMarketCap   = ui->stats->page()->mainFrame()->findFirstElement("#values").findFirst("mc").toPlainText();
+
+        // if the tags werent found then the was no data or the page may not be ready yet
+        // so skip it
+        if (strTotalSupply.size() > 0 && strMarketCap.size() > 0 ){
+
+            // strip out the non-number stuff
+            strTotalSupply.remove(',');
+            strMarketCap.remove(',');
+            strMarketCap.remove('$');
+            
+            // calculate the rate and update any one that cares with some signals
+            BitcoinUnits::dUSDRate = strMarketCap.toFloat()/strTotalSupply.toFloat();
+            updateDisplayUnit();
+            emit displayUnitChanged(model->getOptionsModel()->getDisplayUnit());
+            if (model)
+                emit model->balanceChanged(currentBalance, model->getStake(), currentUnconfirmedBalance, currentImmatureBalance);
+        }
+    }
 }
 
 void OverviewPage::updateHideAmounts()

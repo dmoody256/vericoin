@@ -52,6 +52,18 @@ private slots:
     void updateDisplayUnit();
     void updateDecimalPoints();
     void updateHideAmounts();
+
+    /*
+     *  A slot for getting the vericoin network stats any time 
+     *  there is a network reply from vericoin.info. This 
+     *  method will parse the MarketCap in USD and total coin 
+     *  supply to come up with a USD rate to update the static 
+     *  member of BitcoinUnits to maintain the current rate for
+     *  USD.
+     *  param reply: the response message from vericoin.info 
+     */
+    void updateUSDRate(QNetworkReply* reply);
+    
     void handleTransactionClicked(const QModelIndex &index);
     void myOpenUrl(QUrl url);
     void sslErrorHandler(QNetworkReply* qnr, const QList<QSslError> & errlist);
